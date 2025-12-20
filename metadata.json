@@ -1,0 +1,5 @@
+{
+  "name": "BlindMark Pro",
+  "description": "A professional-grade blind watermark tool capable of embedding invisible text, image, and binary watermarks robust against cropping, noise, and filtering.",
+  "requestFramePermissions": []
+}
