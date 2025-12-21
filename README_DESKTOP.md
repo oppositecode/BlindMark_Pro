@@ -31,15 +31,24 @@ npx tauri init
 - **What is your frontend dev command?** -> `npm run dev`
 - **What is your frontend build command?** -> `npm run build`
 
-## 3. 修改配置 (重要)
+## 3. 修改配置 (重要 - 解决白屏问题)
 
-由于本项目的 `index.html` 使用了 CDN (`esm.sh` 和 `cdn.tailwindcss.com`)，为了确保打包后的 `.exe` 可以在**离线环境**下运行，强烈建议你进行以下操作（可选，但推荐）：
+**这是最关键的一步！** 如果没有正确配置，你的 `.exe` 文件打开后可能是白屏，或者需要运行 `npm run dev` 才能工作。
 
-*如果不进行此步，打包出的软件必须联网才能打开界面。*
+请打开 `src-tauri/tauri.conf.json` 文件，找到 `build` 部分，确保配置如下：
 
-**推荐做法**：使用 `npm install` 安装本地依赖，而不是依赖 `index.html` 中的 CDN 链接。
+```json
+"build": {
+  "beforeBuildCommand": "npm run build",   // 这一行确保打包前先编译React代码
+  "beforeDevCommand": "npm run dev",
+  "devPath": "http://localhost:1420",
+  "distDir": "../dist"                     // 确保这里指向 ../dist
+}
+```
 
-如果不介意必须联网，则可以直接跳到第 4 步。
+*注意：在 Tauri v2 中，`distDir` 可能被称为 `frontendDist`。*
+
+同时，本项目已在 `vite.config.ts` 中添加了 `base: './'`，这对于 `.exe` 在没有服务器的环境下加载资源至关重要。
 
 ## 4. 开发与预览
 
@@ -69,7 +78,10 @@ npx tauri build
 ## 常见问题
 
 **Q: 打开软件白屏？**
-A: 请按 F12 打开开发者工具。如果是网络错误（404），通常是因为 `index.html` 中的 CDN 资源加载失败。请确保电脑已联网，或者将 CDN 资源下载到本地引用。
+A: 
+1. 检查 `src-tauri/tauri.conf.json` 中的 `distDir` 是否指向 `../dist`。
+2. 检查项目根目录下是否有 `dist` 文件夹（运行 `npm run build` 生成）。
+3. 按 F12 打开控制台，看是否有报错。如果是 404 错误，通常是因为 `vite.config.ts` 缺少 `base: './'` 配置。
 
-**Q: 只有文本没有样式？**
-A: 同样是因为 Tailwind CSS 是通过 CDN 加载的。建议通过 `npm install -D tailwindcss postcss autoprefixer` 进行本地化配置。
+**Q: 保存图片没反应？**
+A: 我们已经更新了代码，使用 Blob 对象转换来替代直接下载链接，现在应该可以在桌面端正常保存了。

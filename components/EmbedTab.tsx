@@ -63,10 +63,6 @@ const CompareSlider = ({ leftImage, rightImage }: { leftImage: string, rightImag
         <img 
             src={leftImage} 
             className="absolute top-0 left-0 max-w-none h-full object-contain"
-            // We need to calculate the width of the img to match the parent container aspect ratio
-            // But object-contain makes this tricky. 
-            // Simplified approach: Forcing comparisons usually requires object-cover or strictly same dimensions.
-            // Since we use object-contain, we rely on the images being identical dimensions.
             style={{ width: containerRef.current?.clientWidth }}
             draggable={false}
             alt="Original"
@@ -109,7 +105,6 @@ const EmbedTab: React.FC = () => {
     const generatePreview = async () => {
       if (wmType === WatermarkType.IMAGE && wmImageFile) {
         const bits = await imageToBits(wmImageFile);
-        // Use 64 size for preview
         const canvas = bitsToImageCanvas(bits, 64);
         setWmPreviewUrl(canvas.toDataURL());
       } else {
@@ -140,7 +135,7 @@ const EmbedTab: React.FC = () => {
         bits = textToBits(textInput);
       } else if (wmType === WatermarkType.IMAGE && wmImageFile) {
         bits = await imageToBits(wmImageFile);
-        wmWidth = 64; // Increased to 64x64
+        wmWidth = 64; 
       } else if (wmType === WatermarkType.BINARY) {
          bits = textToBits("1010101"); 
       }
@@ -186,6 +181,35 @@ const EmbedTab: React.FC = () => {
       console.error(err);
       alert("Error processing image");
       setStatus('idle');
+    }
+  };
+
+  const handleSaveImage = () => {
+    if (!processedImage) return;
+
+    // Convert Base64 Data URL to Blob for robust downloading in desktop environments
+    try {
+      const parts = processedImage.split(',');
+      const mime = parts[0].match(/:(.*?);/)?.[1];
+      const bstr = atob(parts[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      const blob = new Blob([u8arr], { type: mime });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `watermarked_${Date.now()}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Download failed", e);
+      alert("Failed to save image. Please try again.");
     }
   };
 
@@ -266,10 +290,6 @@ const EmbedTab: React.FC = () => {
                                 <span className="text-[10px] text-green-600 dark:text-green-400 font-mono">Dithered 64x64</span>
                             </div>
                         </div>
-                        <div className="mt-3 text-[10px] text-slate-600 dark:text-slate-500 leading-tight bg-white dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-700/50 flex items-start gap-1">
-                            <Fingerprint size={12} className="shrink-0 mt-0.5" />
-                            Binary Dithering is used to simulate grayscale levels, making the extracted watermark look like a real B&W photo.
-                        </div>
                     </div>
                 )}
               </div>
@@ -330,13 +350,12 @@ const EmbedTab: React.FC = () => {
             {processedImage && sourceImage ? 'Comparison Preview' : 'Preview'}
           </h3>
           {processedImage && (
-            <a 
-              href={processedImage} 
-              download="watermarked_image.jpg"
-              className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-sm rounded-full flex items-center gap-2 transition-colors"
+            <button 
+              onClick={handleSaveImage}
+              className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-sm rounded-full flex items-center gap-2 transition-colors shadow-sm"
             >
               <Download size={14} /> Save Result
-            </a>
+            </button>
           )}
         </div>
         
