@@ -26,29 +26,69 @@ npx tauri init
 执行 `init` 时，请按以下提示选择：
 - **What is your app name?** -> `BlindMark Pro`
 - **What should the window title be?** -> `BlindMark Pro`
-- **Where are your web assets (HTML/CSS/JS) located?** -> `dist` (这是 Vite 的默认输出目录)
+- **Where are your web assets (HTML/CSS/JS) located?** -> `build` (注意：本项目已配置 Vite 输出到 build 目录)
 - **What is the url of your dev server?** -> `http://localhost:1420`
 - **What is your frontend dev command?** -> `npm run dev`
 - **What is your frontend build command?** -> `npm run build`
 
-## 3. 修改配置 (重要 - 解决白屏问题)
+## 3. 修改配置 (重要!)
 
-**这是最关键的一步！** 如果没有正确配置，你的 `.exe` 文件打开后可能是白屏，或者需要运行 `npm run dev` 才能工作。
+**修复报错：`Additional properties are not allowed ('identifier' was unexpected)`**
 
-请打开 `src-tauri/tauri.conf.json` 文件，找到 `build` 部分，确保配置如下：
+这是因为 **Tauri V2** 的配置文件结构变了。请打开 `src-tauri/tauri.conf.json` 并仔细检查以下两点：
 
+### 3.1 修改 Bundle Identifier (必须在顶层)
+
+请**不要**将 `identifier` 放在 `bundle` 对象里！它必须在文件的**最顶层**。
+
+**❌ 错误写法 (会导致报错):**
 ```json
-"build": {
-  "beforeBuildCommand": "npm run build",   // 这一行确保打包前先编译React代码
-  "beforeDevCommand": "npm run dev",
-  "devPath": "http://localhost:1420",
-  "distDir": "../dist"                     // 确保这里指向 ../dist
+"bundle": {
+  "identifier": "com.blindmark.pro", // 错！V2 不允许在这里
+  "active": true
 }
 ```
 
-*注意：在 Tauri v2 中，`distDir` 可能被称为 `frontendDist`。*
+**✅ 正确写法 (Tauri V2):**
+```json
+{
+  "productName": "BlindMark Pro",
+  "version": "0.1.0",
+  "identifier": "com.blindmark.pro",  // <--- 放在这里 (顶层)
+  "build": { ... },
+  "app": { ... },
+  "bundle": {
+    "active": true,
+    ...
+  }
+}
+```
 
-同时，本项目已在 `vite.config.ts` 中添加了 `base: './'`，这对于 `.exe` 在没有服务器的环境下加载资源至关重要。
+### 3.2 解决白屏问题 (构建路径)
+
+在 `src-tauri/tauri.conf.json` 的 `build` 部分，确保输出目录配置正确。
+
+**Tauri V2 用户：**
+请查找 `frontendDist` 字段（V2 使用此字段名）：
+```json
+"build": {
+  "beforeDevCommand": "npm run dev",
+  "beforeBuildCommand": "npm run build",
+  "devUrl": "http://localhost:1420",
+  "frontendDist": "../build"             // 必须指向 Vite 的输出目录 (我们已将 vite.config.ts 改为输出到 build)
+}
+```
+
+**Tauri V1 用户：**
+请查找 `distDir` 字段：
+```json
+"build": {
+  "beforeDevCommand": "npm run dev",
+  "beforeBuildCommand": "npm run build",
+  "devPath": "http://localhost:1420",
+  "distDir": "../build"
+}
+```
 
 ## 4. 开发与预览
 
@@ -79,9 +119,9 @@ npx tauri build
 
 **Q: 打开软件白屏？**
 A: 
-1. 检查 `src-tauri/tauri.conf.json` 中的 `distDir` 是否指向 `../dist`。
-2. 检查项目根目录下是否有 `dist` 文件夹（运行 `npm run build` 生成）。
-3. 按 F12 打开控制台，看是否有报错。如果是 404 错误，通常是因为 `vite.config.ts` 缺少 `base: './'` 配置。
+1. 检查 `tauri.conf.json` 中的 `frontendDist` 是否指向 `../build`。
+2. 检查项目根目录下是否有 `build` 文件夹（运行 `npm run build` 生成）。
+3. 检查 `vite.config.ts` 是否包含 `base: './'`（本项目已配置）。
 
 **Q: 保存图片没反应？**
-A: 我们已经更新了代码，使用 Blob 对象转换来替代直接下载链接，现在应该可以在桌面端正常保存了。
+A: 本项目代码已更新，使用 Blob 对象转换来替代直接下载链接，现在应该可以在桌面端正常保存了。
