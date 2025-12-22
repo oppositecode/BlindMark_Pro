@@ -74,7 +74,7 @@ Unlike traditional visible watermarks, BlindMark Pro embeds information invisibl
 1.  Clone the repository:
     ```bash
     git clone https://github.com/oppositecode/BlindMark_Pro.git
-    cd blindmark-pro
+    cd Blindmark_pro
     ```
 
 2.  Install dependencies:
