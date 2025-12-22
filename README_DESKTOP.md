@@ -41,7 +41,7 @@ npx tauri init
 
 请**不要**将 `identifier` 放在 `bundle` 对象里！它必须在文件的**最顶层**。
 
-**❌ 错误写法 (会导致报错):**
+** 错误写法 (会导致报错):**
 ```json
 "bundle": {
   "identifier": "com.blindmark.pro", // 错！V2 不允许在这里
@@ -49,7 +49,7 @@ npx tauri init
 }
 ```
 
-**✅ 正确写法 (Tauri V2):**
+** 正确写法 (Tauri V2):**
 ```json
 {
   "productName": "BlindMark Pro",
