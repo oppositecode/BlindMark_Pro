@@ -4,6 +4,8 @@ import { Upload, Download, RefreshCw, Zap, Image as ImageIcon, Type, Activity, A
 import { useWorker } from '../hooks/useWorker';
 import { textToBits, imageToBits, bitsToImageCanvas } from '../utils/helpers';
 import { WatermarkType } from '../types';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeFile } from '@tauri-apps/plugin-fs';
 
 const CompareSlider = ({ leftImage, rightImage }: { leftImage: string, rightImage: string }) => {
   const [sliderPosition, setSliderPosition] = useState(50);
@@ -195,71 +197,44 @@ const EmbedTab: React.FC = () => {
       // ---------------------------------------------------------
       // 1. DESKTOP (Tauri) Saving Logic
       // ---------------------------------------------------------
+      // In Tauri V2, we check for __TAURI_INTERNALS__ or similar.
       // @ts-ignore
-      const tauri = typeof window !== 'undefined' ? (window.__TAURI__) : null;
+      const isTauri = typeof window !== 'undefined' && (window.__TAURI_INTERNALS__ || window.__TAURI__);
       
-      // If we are in Tauri environment (Global object exists)
-      if (tauri) {
+      if (isTauri) {
           try {
-              // Convert Base64 -> Binary Array (needed for FS write)
+              // Convert Base64 -> Uint8Array
               const parts = processedImage.split(',');
               const base64Data = parts[1];
               const binaryString = atob(base64Data);
               const len = binaryString.length;
-              
-              // Use Uint8Array for binary data (Required for correct serialization in Tauri V2)
               const bytes = new Uint8Array(len);
               for (let i = 0; i < len; i++) {
                   bytes[i] = binaryString.charCodeAt(i);
               }
 
-              // STRATEGY A: Try V2 `core.invoke` directly (Bypasses need for frontend npm packages)
-              // This relies on the Rust plugin being installed in Cargo.toml and registered in lib.rs
-              if (tauri.core && tauri.core.invoke) {
-                  console.log("Attempting Tauri V2 Save...");
-                  
-                  // 1. Open Dialog 
-                  // FIX: Pass options directly, do not wrap in "options" object
-                  const filePath = await tauri.core.invoke('plugin:dialog|save', {
-                      defaultPath: `watermarked_${Date.now()}.jpg`,
-                      filters: [{ name: 'Image', extensions: ['jpg', 'jpeg'] }]
-                  });
+              // Use official plugins directly.
+              // Note: If you are running in browser but 'isTauri' is false, these imports are harmless.
+              // If 'isTauri' is true, these will communicate with the Rust backend.
+              
+              const filePath = await save({
+                  defaultPath: `watermarked_${Date.now()}.jpg`,
+                  filters: [{ name: 'Image', extensions: ['jpg', 'jpeg'] }]
+              });
 
-                  if (!filePath) return; // User cancelled
+              if (!filePath) return; // User cancelled
 
-                  // 2. Write File
-                  // FIX: Use 'data' instead of 'contents' for the argument key
-                  await tauri.core.invoke('plugin:fs|write', {
-                      path: filePath,
-                      data: bytes 
-                  });
-                  
-                  alert("Image saved successfully!");
-                  return;
-              }
-
-              // STRATEGY B: Try V1 style or Polyfilled (window.__TAURI__.fs)
-              if (tauri.dialog && tauri.fs) {
-                  const filePath = await tauri.dialog.save({
-                      defaultPath: `watermarked_${Date.now()}.jpg`,
-                      filters: [{ name: 'Image', extensions: ['jpg', 'jpeg'] }]
-                  });
-                  if (filePath) {
-                      // bytes is already Uint8Array
-                      await tauri.fs.writeBinaryFile(filePath, bytes);
-                      alert("Image saved successfully!");
-                  }
-                  return;
-              }
-
-              throw new Error("Tauri API found but invoke/fs methods missing.");
+              await writeFile(filePath, bytes);
+              
+              alert("Image saved successfully!");
+              return;
 
           } catch (tauriError: any) {
               console.error("Tauri save error:", tauriError);
               const msg = tauriError.message || JSON.stringify(tauriError);
               
-              if (msg.includes("not allowed by ACL")) {
-                  setSaveError(`Permission Denied: Missing capabilities in tauri.conf.json. Please add "capabilities": ["default"] to app.security.`);
+              if (msg.includes("forbidden") || msg.includes("scope")) {
+                  setSaveError(`Permission Denied: Check 'fs:allow-create' in default.json. Details: ${msg}`);
               } else {
                   setSaveError(`Desktop Save Failed: ${msg}`);
               }
