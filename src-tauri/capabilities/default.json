@@ -9,8 +9,14 @@
   "permissions": [
     "core:default",
     "fs:default",
-    "fs:allow-write",
-    "fs:allow-create",
+    {
+      "identifier": "fs:allow-write",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-create",
+      "allow": [{ "path": "**" }]
+    },
     "dialog:default",
     "dialog:allow-save"
   ]

@@ -206,8 +206,9 @@ const EmbedTab: React.FC = () => {
               const base64Data = parts[1];
               const binaryString = atob(base64Data);
               const len = binaryString.length;
-              // We use regular Array for invoke compatibility across versions
-              const bytes = new Array(len);
+              
+              // Use Uint8Array for binary data (Required for correct serialization in Tauri V2)
+              const bytes = new Uint8Array(len);
               for (let i = 0; i < len; i++) {
                   bytes[i] = binaryString.charCodeAt(i);
               }
@@ -244,8 +245,8 @@ const EmbedTab: React.FC = () => {
                       filters: [{ name: 'Image', extensions: ['jpg', 'jpeg'] }]
                   });
                   if (filePath) {
-                      const u8 = new Uint8Array(bytes);
-                      await tauri.fs.writeBinaryFile(filePath, u8);
+                      // bytes is already Uint8Array
+                      await tauri.fs.writeBinaryFile(filePath, bytes);
                       alert("Image saved successfully!");
                   }
                   return;
@@ -255,7 +256,13 @@ const EmbedTab: React.FC = () => {
 
           } catch (tauriError: any) {
               console.error("Tauri save error:", tauriError);
-              setSaveError(`Desktop Save Failed: ${tauriError.message || JSON.stringify(tauriError)}`);
+              const msg = tauriError.message || JSON.stringify(tauriError);
+              
+              if (msg.includes("not allowed by ACL")) {
+                  setSaveError(`Permission Denied: Missing capabilities in tauri.conf.json. Please add "capabilities": ["default"] to app.security.`);
+              } else {
+                  setSaveError(`Desktop Save Failed: ${msg}`);
+              }
               return;
           }
       }

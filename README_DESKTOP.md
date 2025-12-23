@@ -27,7 +27,6 @@ npx tauri init
 - **What is your app name?** -> `BlindMark Pro`
 - **What should the window title be?** -> `BlindMark Pro`
 - **Where are your web assets (HTML/CSS/JS) located?** -> `build` (注意：本项目已配置 Vite 输出到 build 目录)
-- **What is the url of your dev server?** -> `http://localhost:1420`
 - **What is your frontend dev command?** -> `npm run dev`
 - **What is your frontend build command?** -> `npm run build`
 
@@ -35,7 +34,8 @@ npx tauri init
 
 **修复报错：`Additional properties are not allowed ('identifier' was unexpected)`**
 
-请打开 `src-tauri/tauri.conf.json` 并确保 `identifier` 在顶层，`frontendDist` 指向 `../build`。
+请打开 `src-tauri/tauri.conf.json` 并确保 `identifier` 在顶层。
+**关键步骤**：你必须在 `app.security` 中添加 `"capabilities": ["default"]`，否则所有权限都会被拒绝！
 
 ```json
 {
@@ -49,7 +49,10 @@ npx tauri init
   },
   "app": {
     "withGlobalTauri": true, 
-    "security": { "csp": null }
+    "security": { 
+      "csp": null,
+      "capabilities": ["default"] 
+    }
   },
   "bundle": { "active": true }
 }
@@ -87,7 +90,7 @@ pub fn run() {
 ```
 
 ### 4.3 允许权限 (tauri.conf.json)
-确保你的应用有权限写入文件。在 `src-tauri/tauri.conf.json` 中配置 `capabilities` 或 `allowlist` (视版本而定，通常插件初始化后默认有基础权限，如果遇到 Permission Denied，请检查 capabilities 文件夹下的配置)。
+确保你已经按照**第3步**配置了 `"capabilities": ["default"]`。这会加载 `src-tauri/capabilities/default.json` 文件中的权限。
 
 ## 5. 开发与预览
 
