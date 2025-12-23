@@ -35,93 +35,68 @@ npx tauri init
 
 **修复报错：`Additional properties are not allowed ('identifier' was unexpected)`**
 
-这是因为 **Tauri V2** 的配置文件结构变了。请打开 `src-tauri/tauri.conf.json` 并仔细检查以下两点：
+请打开 `src-tauri/tauri.conf.json` 并确保 `identifier` 在顶层，`frontendDist` 指向 `../build`。
 
-### 3.1 修改 Bundle Identifier (必须在顶层)
-
-请**不要**将 `identifier` 放在 `bundle` 对象里！它必须在文件的**最顶层**。
-
-** 错误写法 (会导致报错):**
-```json
-"bundle": {
-  "identifier": "com.blindmark.pro", // 错！V2 不允许在这里
-  "active": true
-}
-```
-
-** 正确写法 (Tauri V2):**
 ```json
 {
   "productName": "BlindMark Pro",
   "version": "0.1.0",
-  "identifier": "com.blindmark.pro",  // <--- 放在这里 (顶层)
-  "build": { ... },
-  "app": { ... },
-  "bundle": {
-    "active": true,
-    ...
-  }
+  "identifier": "com.blindmark.pro",
+  "build": {
+    "frontendDist": "../build",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "withGlobalTauri": true, 
+    "security": { "csp": null }
+  },
+  "bundle": { "active": true }
 }
 ```
 
-### 3.2 解决白屏问题 (构建路径)
+## 4. 修复“保存”功能 (Tauri V2 必读!)
 
-在 `src-tauri/tauri.conf.json` 的 `build` 部分，确保输出目录配置正确。
+**这是最关键的一步！** 如果你使用最新的 Tauri V2（`npx tauri init` 默认安装 V2），仅仅在 JS 中写代码是不够的。你必须在 Rust 侧显式注册文件系统插件。
 
-**Tauri V2 用户：**
-请查找 `frontendDist` 字段（V2 使用此字段名）：
-```json
-"build": {
-  "beforeDevCommand": "npm run dev",
-  "beforeBuildCommand": "npm run build",
-  "devUrl": "http://localhost:1420",
-  "frontendDist": "../build"             // 必须指向 Vite 的输出目录 (我们已将 vite.config.ts 改为输出到 build)
+### 4.1 安装 Rust 插件
+在 `src-tauri` 目录下打开终端，运行：
+
+```bash
+cd src-tauri
+npm install @tauri-apps/plugin-fs @tauri-apps/plugin-dialog
+cargo add tauri-plugin-fs tauri-plugin-dialog
+```
+
+### 4.2 修改 `src-tauri/src/lib.rs`
+打开 `src-tauri/src/lib.rs` (如果是旧模版可能是 `main.rs`)，修改 `run` 函数，将插件注册进去：
+
+```rust
+// src-tauri/src/lib.rs
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        // 👇👇👇 必须添加这两行 👇👇👇
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
+        // 👆👆👆 必须添加这两行 👆👆👆
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
 ```
 
-**Tauri V1 用户：**
-请查找 `distDir` 字段：
-```json
-"build": {
-  "beforeDevCommand": "npm run dev",
-  "beforeBuildCommand": "npm run build",
-  "devPath": "http://localhost:1420",
-  "distDir": "../build"
-}
-```
+如果没有这一步，前端调用 `window.__TAURI__.fs` 时会报错或找不到对象。
 
-## 4. 开发与预览
-
-在开发模式下像桌面软件一样运行它：
+## 5. 开发与预览
 
 ```bash
 npx tauri dev
 ```
 
-这将启动 Vite 服务器并弹出一个包含你应用的窗口。
-
-## 5. 打包构建
-
-运行以下命令生成最终的安装包和 `.exe` 文件：
+## 6. 打包构建
 
 ```bash
 npx tauri build
 ```
-
-构建完成后，你可以在以下目录找到安装包：
-`src-tauri/target/release/bundle/msi/` (安装包)
-`src-tauri/target/release/bundle/nsis/` (安装包)
-
-或者直接找到可执行文件：
-`src-tauri/target/release/blind-mark-pro.exe`
-
-## 常见问题
-
-**Q: 打开软件白屏？**
-A: 
-1. 检查 `tauri.conf.json` 中的 `frontendDist` 是否指向 `../build`。
-2. 检查项目根目录下是否有 `build` 文件夹（运行 `npm run build` 生成）。
-3. 检查 `vite.config.ts` 是否包含 `base: './'`（本项目已配置）。
-
-**Q: 保存图片没反应？**
-A: 本项目代码已更新，使用 Blob 对象转换来替代直接下载链接，现在应该可以在桌面端正常保存了。
+构建出的 exe 文件在 `src-tauri/target/release/` 目录下。

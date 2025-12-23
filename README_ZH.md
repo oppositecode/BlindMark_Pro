@@ -73,8 +73,8 @@
 
 1.  克隆仓库：
     ```bash
-    git clone https://github.com/oppositecode/BlindMark_Pro.git
-    cd Blindmark_Pro
+    git clone https://github.com/your-username/blindmark-pro.git
+    cd blindmark-pro
     ```
 
 2.  安装依赖：

@@ -184,11 +184,75 @@ const EmbedTab: React.FC = () => {
     }
   };
 
-  const handleSaveImage = () => {
+  const handleSaveImage = async () => {
     if (!processedImage) return;
 
-    // Convert Base64 Data URL to Blob for robust downloading in desktop environments
     try {
+      // ---------------------------------------------------------
+      // 1. DESKTOP (Tauri) Saving Logic
+      // ---------------------------------------------------------
+      // Check for Tauri global object (V1 or V2 withGlobalTauri)
+      // @ts-ignore
+      const tauri = typeof window !== 'undefined' ? (window.__TAURI__) : null;
+      
+      // If we are likely in Tauri environment
+      if (tauri) {
+          try {
+              // V1: APIs are directly on window.__TAURI__.fs / dialog
+              // V2 (Global): Usually missing fs/dialog unless custom setup, but let's try.
+              const fs = tauri.fs;
+              const dialog = tauri.dialog;
+
+              if (!fs || !dialog) {
+                  // If we are here, it means Tauri is detected, but fs/dialog are missing.
+                  // This confirms usage of Tauri V2 without correct plugin setup or global mapping.
+                  throw new Error(
+                      "Tauri API detected but 'fs' or 'dialog' modules are missing.\n\n" +
+                      "FOR DEVELOPER: If you are using Tauri V2, please ensure you have:\n" +
+                      "1. Installed @tauri-apps/plugin-fs and plugin-dialog in src-tauri\n" +
+                      "2. Registered them in src-tauri/src/lib.rs (or main.rs)\n" +
+                      "3. Configured tauri.conf.json correctly.\n\n" +
+                      "See README_DESKTOP.md for the exact Rust code."
+                  );
+              }
+
+              // Proceed if APIs exist (e.g. Tauri V1 or V2 with polyfills)
+              // Convert Base64 -> Binary Uint8Array
+              const parts = processedImage.split(',');
+              const base64Data = parts[1];
+              const binaryString = atob(base64Data);
+              const len = binaryString.length;
+              const bytes = new Uint8Array(len);
+              for (let i = 0; i < len; i++) {
+                  bytes[i] = binaryString.charCodeAt(i);
+              }
+
+              // Open System "Save As" Dialog
+              const filePath = await dialog.save({
+                  defaultPath: `watermarked_${Date.now()}.jpg`,
+                  filters: [{
+                      name: 'Image',
+                      extensions: ['jpg', 'jpeg']
+                  }]
+              });
+
+              // Write file if user selected a path
+              if (filePath) {
+                  await fs.writeBinaryFile(filePath, bytes);
+                  alert("Success: Image saved to disk.");
+              }
+              return; // Stop here if successful
+
+          } catch (tauriError: any) {
+              console.error("Tauri save error:", tauriError);
+              alert(tauriError.message || "Tauri save failed.");
+              // Fall through to browser download as last resort
+          }
+      }
+
+      // ---------------------------------------------------------
+      // 2. WEB BROWSER Saving Logic (Fallback)
+      // ---------------------------------------------------------
       const parts = processedImage.split(',');
       const mime = parts[0].match(/:(.*?);/)?.[1];
       const bstr = atob(parts[1]);
