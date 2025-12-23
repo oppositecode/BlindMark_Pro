@@ -86,7 +86,8 @@ pub fn run() {
 }
 ```
 
-如果没有这一步，前端调用 `window.__TAURI__.fs` 时会报错或找不到对象。
+### 4.3 允许权限 (tauri.conf.json)
+确保你的应用有权限写入文件。在 `src-tauri/tauri.conf.json` 中配置 `capabilities` 或 `allowlist` (视版本而定，通常插件初始化后默认有基础权限，如果遇到 Permission Denied，请检查 capabilities 文件夹下的配置)。
 
 ## 5. 开发与预览
 

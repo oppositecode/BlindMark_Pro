@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, Download, RefreshCw, Zap, Image as ImageIcon, Type, Activity, ArrowRight, Fingerprint, Sliders } from 'lucide-react';
+import { Upload, Download, RefreshCw, Zap, Image as ImageIcon, Type, Activity, ArrowRight, Fingerprint, Sliders, AlertTriangle } from 'lucide-react';
 import { useWorker } from '../hooks/useWorker';
 import { textToBits, imageToBits, bitsToImageCanvas } from '../utils/helpers';
 import { WatermarkType } from '../types';
@@ -90,6 +90,7 @@ const EmbedTab: React.FC = () => {
   const [sourceImage, setSourceImage] = useState<string | null>(null);
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'processing' | 'done'>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
   
   const [wmType, setWmType] = useState<WatermarkType>(WatermarkType.TEXT);
   const [textInput, setTextInput] = useState("Copyright 2024");
@@ -120,12 +121,14 @@ const EmbedTab: React.FC = () => {
       setSourceImage(URL.createObjectURL(file));
       setProcessedImage(null);
       setStatus('idle');
+      setSaveError(null);
     }
   };
 
   const handleEmbed = async () => {
     if (!sourceImage || !isReady) return;
     setStatus('processing');
+    setSaveError(null);
 
     try {
       let bits: number[] = [];
@@ -186,67 +189,74 @@ const EmbedTab: React.FC = () => {
 
   const handleSaveImage = async () => {
     if (!processedImage) return;
+    setSaveError(null);
 
     try {
       // ---------------------------------------------------------
       // 1. DESKTOP (Tauri) Saving Logic
       // ---------------------------------------------------------
-      // Check for Tauri global object (V1 or V2 withGlobalTauri)
       // @ts-ignore
       const tauri = typeof window !== 'undefined' ? (window.__TAURI__) : null;
       
-      // If we are likely in Tauri environment
+      // If we are in Tauri environment (Global object exists)
       if (tauri) {
           try {
-              // V1: APIs are directly on window.__TAURI__.fs / dialog
-              // V2 (Global): Usually missing fs/dialog unless custom setup, but let's try.
-              const fs = tauri.fs;
-              const dialog = tauri.dialog;
-
-              if (!fs || !dialog) {
-                  // If we are here, it means Tauri is detected, but fs/dialog are missing.
-                  // This confirms usage of Tauri V2 without correct plugin setup or global mapping.
-                  throw new Error(
-                      "Tauri API detected but 'fs' or 'dialog' modules are missing.\n\n" +
-                      "FOR DEVELOPER: If you are using Tauri V2, please ensure you have:\n" +
-                      "1. Installed @tauri-apps/plugin-fs and plugin-dialog in src-tauri\n" +
-                      "2. Registered them in src-tauri/src/lib.rs (or main.rs)\n" +
-                      "3. Configured tauri.conf.json correctly.\n\n" +
-                      "See README_DESKTOP.md for the exact Rust code."
-                  );
-              }
-
-              // Proceed if APIs exist (e.g. Tauri V1 or V2 with polyfills)
-              // Convert Base64 -> Binary Uint8Array
+              // Convert Base64 -> Binary Array (needed for FS write)
               const parts = processedImage.split(',');
               const base64Data = parts[1];
               const binaryString = atob(base64Data);
               const len = binaryString.length;
-              const bytes = new Uint8Array(len);
+              // We use regular Array for invoke compatibility across versions
+              const bytes = new Array(len);
               for (let i = 0; i < len; i++) {
                   bytes[i] = binaryString.charCodeAt(i);
               }
 
-              // Open System "Save As" Dialog
-              const filePath = await dialog.save({
-                  defaultPath: `watermarked_${Date.now()}.jpg`,
-                  filters: [{
-                      name: 'Image',
-                      extensions: ['jpg', 'jpeg']
-                  }]
-              });
+              // STRATEGY A: Try V2 `core.invoke` directly (Bypasses need for frontend npm packages)
+              // This relies on the Rust plugin being installed in Cargo.toml and registered in lib.rs
+              if (tauri.core && tauri.core.invoke) {
+                  console.log("Attempting Tauri V2 Save...");
+                  
+                  // 1. Open Dialog 
+                  // FIX: Pass options directly, do not wrap in "options" object
+                  const filePath = await tauri.core.invoke('plugin:dialog|save', {
+                      defaultPath: `watermarked_${Date.now()}.jpg`,
+                      filters: [{ name: 'Image', extensions: ['jpg', 'jpeg'] }]
+                  });
 
-              // Write file if user selected a path
-              if (filePath) {
-                  await fs.writeBinaryFile(filePath, bytes);
-                  alert("Success: Image saved to disk.");
+                  if (!filePath) return; // User cancelled
+
+                  // 2. Write File
+                  // FIX: Use 'data' instead of 'contents' for the argument key
+                  await tauri.core.invoke('plugin:fs|write', {
+                      path: filePath,
+                      data: bytes 
+                  });
+                  
+                  alert("Image saved successfully!");
+                  return;
               }
-              return; // Stop here if successful
+
+              // STRATEGY B: Try V1 style or Polyfilled (window.__TAURI__.fs)
+              if (tauri.dialog && tauri.fs) {
+                  const filePath = await tauri.dialog.save({
+                      defaultPath: `watermarked_${Date.now()}.jpg`,
+                      filters: [{ name: 'Image', extensions: ['jpg', 'jpeg'] }]
+                  });
+                  if (filePath) {
+                      const u8 = new Uint8Array(bytes);
+                      await tauri.fs.writeBinaryFile(filePath, u8);
+                      alert("Image saved successfully!");
+                  }
+                  return;
+              }
+
+              throw new Error("Tauri API found but invoke/fs methods missing.");
 
           } catch (tauriError: any) {
               console.error("Tauri save error:", tauriError);
-              alert(tauriError.message || "Tauri save failed.");
-              // Fall through to browser download as last resort
+              setSaveError(`Desktop Save Failed: ${tauriError.message || JSON.stringify(tauriError)}`);
+              return;
           }
       }
 
@@ -271,9 +281,9 @@ const EmbedTab: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Download failed", e);
-      alert("Failed to save image. Please try again.");
+      setSaveError(`Save Error: ${e.message}`);
     }
   };
 
@@ -414,16 +424,29 @@ const EmbedTab: React.FC = () => {
             {processedImage && sourceImage ? 'Comparison Preview' : 'Preview'}
           </h3>
           {processedImage && (
-            <button 
-              onClick={handleSaveImage}
-              className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-sm rounded-full flex items-center gap-2 transition-colors shadow-sm"
-            >
-              <Download size={14} /> Save Result
-            </button>
+            <div className="flex flex-col items-end">
+                <button 
+                onClick={handleSaveImage}
+                className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-sm rounded-full flex items-center gap-2 transition-colors shadow-sm"
+                >
+                <Download size={14} /> Save Result
+                </button>
+            </div>
           )}
         </div>
         
         <div className="flex-1 p-6 flex flex-col md:flex-row gap-4 items-center justify-center relative bg-slate-100 dark:bg-transparent bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-repeat">
+           {saveError && (
+               <div className="absolute top-4 left-4 right-4 z-10 bg-red-100 dark:bg-red-900/90 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-100 px-4 py-3 rounded-lg flex items-start gap-2 text-sm shadow-lg animate-in fade-in slide-in-from-top-2">
+                   <AlertTriangle className="shrink-0 mt-0.5" size={16} />
+                   <div className="flex-1">
+                       <p className="font-bold">Save Failed</p>
+                       <p>{saveError}</p>
+                   </div>
+                   <button onClick={() => setSaveError(null)} className="opacity-70 hover:opacity-100">&times;</button>
+               </div>
+           )}
+
            {!sourceImage ? (
              <div className="text-slate-400 dark:text-slate-500 flex flex-col items-center">
                <ImageIcon size={48} className="mb-2 opacity-50" />
